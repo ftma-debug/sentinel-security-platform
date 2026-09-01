@@ -15,5 +15,15 @@ def init_db():
     role TEXT NOT NULL DEFAULT 'user'
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sessions(
+    id INTEGER PRIMARY KEY,
+    session_id TEXT UNIQUE NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME NOT NULL,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY(user_id)REFERENCES users(id)
+    )
+    """)
     con.commit()
     con.close()
