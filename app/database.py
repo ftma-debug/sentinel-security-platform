@@ -25,5 +25,12 @@ def init_db():
     FOREIGN KEY(user_id)REFERENCES users(id)
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS login_attempts(
+    id INTEGER PRIMARY KEY ,
+    username TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    blocked_until DATETIME)
+    """)
     con.commit()
     con.close()

@@ -23,7 +23,24 @@ def login(user:UserLogin ,response:Response):
     result=cur.execute("""SELECT id,password_hash FROM users WHERE username=?
 """,
 (user.username,)).fetchone()
+    attempts = cur.execute("""
+    SELECT failed_attempts, blocked_until
+    FROM login_attempts
+    WHERE username=?
+    """, (user.username,)).fetchone()
+
+    if attempts is not None and attempts["blocked_until"] is not None:
+        blocked_until = datetime.fromisoformat(attempts["blocked_until"])
+
+        if datetime.utcnow() < blocked_until:
+            con.close()
+            raise HTTPException(
+                status_code=403,
+                detail="Too many failed attempts. Try again later."
+            )
     if result is None:
+        record_failed_attempts(user.username,cur)
+        con.commit()
         con.close()
         raise HTTPException(status_code=401,detail="Invalid user name or password")
     if verify_password(user.password,result["password_hash"]):
@@ -39,14 +56,52 @@ def login(user:UserLogin ,response:Response):
         response.set_cookie(
             key="session_id",
             value=session_id,
-            httponly=True
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            max_age=3600 # max age of cookie is 3600s so 1h
         )
+        cur.execute("""UPDATE login_attempts 
+        SET failed_attempts=0,blocked_until=NULL
+        WHERE username=?""",(user.username,))
         con.commit()
         con.close()
         return {"message":"login successfully !"}
     else:
+        record_failed_attempts(user.username,cur)
+        con.commit()
         con.close()
         raise HTTPException(status_code=401,detail="Invalid username or password")
+
+
+
+#record failed attempts
+def record_failed_attempts(username,cur):
+    attempt=cur.execute("""SELECT failed_attempts,blocked_until FROM login_attempts WHERE username=? ;""",(username,)).fetchone()
+    if attempt is None:
+        cur.execute("""INSERT INTO login_attempts 
+                    (username,failed_attempts)
+                    VALUES(?,?)""",(username,1))
+        return
+    failed_attempts=attempt["failed_attempts"]+1
+    if failed_attempts>=5:
+        blocked_until=datetime.utcnow()+timedelta(minutes=5)
+        cur.execute("""UPDATE login_attempts 
+                        SET blocked_until=?, failed_attempts=? WHERE username=?""",(blocked_until,failed_attempts,username))
+    else:
+        cur.execute("""
+            UPDATE login_attempts
+            SET failed_attempts=?
+            WHERE username=?
+        """, (failed_attempts, username))
+
+
+
+
+
+
+
+    
 def get_current_user(request:Request):
     session_id=request.cookies.get("session_id")
     if session_id is None:
@@ -157,10 +212,15 @@ def delete_user(user_id: int,current_user:dict=Depends(require_admin)):
 def verify_password(password,password_hashed):
     return pwd_context.verify(password,password_hashed)
 
+
+
+
+
 #logout
 @app.post("/auth/logout")
-def logout(request:Request):
+def logout(request:Request,response:Response):
     session_id=request.cookies.get("session_id")
+    response.delete_cookie("session_id")
     if session_id is None:
         raise HTTPException(status_code=401 ,detail="Not authenticated")
     con=database.get_db_connection()
