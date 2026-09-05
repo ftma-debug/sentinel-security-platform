@@ -28,9 +28,18 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS login_attempts(
     id INTEGER PRIMARY KEY ,
-    username TEXT NOT NULL,
+    username TEXT UNIQUE NOT NULL,
     failed_attempts INTEGER NOT NULL DEFAULT 0,
     blocked_until DATETIME)
+    """)
+    cur .execute("""
+    CREATE TABLE IF NOT EXISTS security_events(
+    id INTEGER PRIMARY KEY,
+    event_type TEXT NOT NULL ,
+    user_id INTEGER,
+    ip_address TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id))
     """)
     con.commit()
     con.close()

@@ -4,6 +4,8 @@ from fastapi import Response,Request
 from fastapi import Depends
 from pydantic import BaseModel
 import secrets
+import sqlite3
+import requests 
 from passlib.context import CryptContext
 from datetime import datetime,timedelta
 from app import database
@@ -15,9 +17,39 @@ app=FastAPI()
 class UserLogin(BaseModel):
     username: str
     password: str
+
+
+
+
+#record security events
+def log_security_event(event_type,user_id=None,ip_address=None):
+    con=database.get_db_connection()
+    cur=con.cursor()
+    cur.execute("""
+    INSERT INTO security_events
+    (event_type,user_id,ip_address)
+    VALUES(?,?,?)
+    """,(event_type,user_id,ip_address))
+    con.commit()
+    con.close()
+
+
+
+def get_ip_address(request:Request):
+    if request.client:
+        return request.client.host
+    return None
+
+
+
+
+
+
+
+
 #auth 
 @app.post("/auth/login")
-def login(user:UserLogin ,response:Response):
+def login(user:UserLogin ,response:Response,request:Request):
     con=database.get_db_connection()
     cur=con.cursor()
     result=cur.execute("""SELECT id,password_hash FROM users WHERE username=?
@@ -34,6 +66,7 @@ def login(user:UserLogin ,response:Response):
 
         if datetime.utcnow() < blocked_until:
             con.close()
+            log_security_event("LOGIN_BLOCKED",None,get_ip_address(request))
             raise HTTPException(
                 status_code=403,
                 detail="Too many failed attempts. Try again later."
@@ -42,12 +75,16 @@ def login(user:UserLogin ,response:Response):
         record_failed_attempts(user.username,cur)
         con.commit()
         con.close()
+        log_security_event("LOGIN_FAILURE",None,get_ip_address(request))
         raise HTTPException(status_code=401,detail="Invalid user name or password")
     if verify_password(user.password,result["password_hash"]):
         
         session_id=secrets.token_urlsafe(32)
         created_at=datetime.utcnow()
         expires_at=created_at+timedelta(hours=1)
+        exixting_session=cur.execute("""
+        SELECT session_id FROM sessions WHERE user_id=? And expires_at >?
+        """,(result["id"],datetime.utcnow())).fetchone()
         cur.execute("""
         INSERT INTO sessions
         (session_id,user_id,created_at,expires_at)
@@ -65,12 +102,20 @@ def login(user:UserLogin ,response:Response):
         SET failed_attempts=0,blocked_until=NULL
         WHERE username=?""",(user.username,))
         con.commit()
+        log_security_event("LOGIN_SUCCESS",result["id"],get_ip_address(request))
+        if exixting_session is None:
+            log_security_event("SESSION_CREATED",result["id"],get_ip_address(request))
+        else:
+            log_security_event("SESSION_ROTATED",result["id"],get_ip_address(request))
+        
         con.close()
+        
         return {"message":"login successfully !"}
     else:
         record_failed_attempts(user.username,cur)
         con.commit()
         con.close()
+        log_security_event("LOGIN_FAILURE",result["id"],get_ip_address(request))
         raise HTTPException(status_code=401,detail="Invalid username or password")
 
 
@@ -100,11 +145,11 @@ def record_failed_attempts(username,cur):
 
 
 
-
     
 def get_current_user(request:Request):
     session_id=request.cookies.get("session_id")
     if session_id is None:
+        log_security_event("UNAUTHORIZED_ACCESS",ip_address=get_ip_address(request))
         raise HTTPException(status_code=401,detail="Not Authantificated")
     con=database.get_db_connection()
     cur=con.cursor()
@@ -112,9 +157,11 @@ def get_current_user(request:Request):
     """,(session_id,)).fetchone()
     if result is None:
         con.close()
+        log_security_event("INVALID_SESSION",ip_address=get_ip_address(request))
         raise HTTPException(status_code=401,detail="invalid session")
     expires_at=datetime.fromisoformat(result["expires_at"])#Extracts the expiry time from the session data and converts it from a string (ISO format) back into a Python datetime object so you can compare it with the current time.
     if datetime.utcnow()>expires_at:
+        log_security_event("SESSION_EXPIRED",result["user_id"],get_ip_address(request))
         con.close()
         raise HTTPException(status_code=401,detail="session expired")
     user=cur.execute("""SELECT id,username,email,role FROM users WHERE id=?""",
@@ -126,8 +173,9 @@ def get_current_user(request:Request):
     return dict(user)
 
 
-def require_admin(current_user:dict=Depends(get_current_user)):
+def require_admin(request:Request,current_user:dict=Depends(get_current_user)):
     if current_user["role"] !='admin':
+        log_security_event("FORBIDDEN_ACCESS",current_user["id"],get_ip_address(request))
         raise HTTPException(status_code=403,detail="admin access required")
     return current_user
 
@@ -154,8 +202,13 @@ def get_users(current_user:dict=Depends(require_admin)):
 
 #get /users/{user_id}(dynamic route)
 @app.get("/users/{user_id}")
-def get_user_with_id(user_id: int,current_user:dict=Depends(get_current_user)):
+def get_user_with_id(request:Request,user_id: int,current_user:dict=Depends(get_current_user)):
     if current_user["role"] !="admin" and current_user["id"]!=user_id:
+        log_security_event(
+        "FORBIDDEN_ACCESS",
+        current_user["id"],
+        get_ip_address(request)
+)
         raise HTTPException(status_code=403,detail="You are not allowed to access this user")
     con=database.get_db_connection()
     cur=con.cursor()
@@ -173,7 +226,7 @@ class UserCreate(BaseModel):
     password: str
 #post /users (create new user)
 @app.post("/users")
-def create_user(user:UserCreate,current_user:dict=Depends(require_admin)):
+def create_user(request:Request,user:UserCreate,current_user:dict=Depends(require_admin)):
     con=database.get_db_connection()
     cur=con.cursor()
     cur.execute("""
@@ -185,6 +238,7 @@ VALUES(?,?,?)
 )
     con.commit()
     user_id=cur.lastrowid
+    log_security_event("USER_CREATED",user_id,get_ip_address(request))
     con.close()
     return{"message":"user created successfully!",
            "user": {
@@ -195,7 +249,7 @@ VALUES(?,?,?)
            }}
 #delete /users/{user_id}
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int,current_user:dict=Depends(require_admin)):
+def delete_user(request:Request,user_id: int,current_user:dict=Depends(require_admin)):
     con=database.get_db_connection()
     cur=con.cursor()
     cur.execute("""DELETE FROM users WHERE id=?;
@@ -204,6 +258,7 @@ def delete_user(user_id: int,current_user:dict=Depends(require_admin)):
     if cur.rowcount==0:
         con.close()
         raise HTTPException(status_code=404,detail="user not found")
+    log_security_event("USER_DELETED",user_id,get_ip_address(request))
     con.commit()
     con.close()
     return {"message":f"User with id {user_id} deleted succcessfully !"}
@@ -225,9 +280,12 @@ def logout(request:Request,response:Response):
         raise HTTPException(status_code=401 ,detail="Not authenticated")
     con=database.get_db_connection()
     cur=con.cursor()
+    user_id=cur.execute("SELECT user_id FROM sessions WHERE session_id=? ",(session_id,)).fetchone()
     cur.execute("""DELETE FROM sessions WHERE session_id=?""",
                 (session_id,))
     con.commit()
+    if user_id is not None:
+        log_security_event("LOGOUT",user_id[0],get_ip_address(request))
     con.close()
     return{"message":"logged out successfully!"}
 
@@ -237,3 +295,15 @@ hashed=hashpwd("tahyaljazayer")
 print(hashed)
 print(verify_password("tahyaljazayer",hashed))
 print(verify_password("123",hashed))
+
+
+
+
+
+
+
+
+
+
+
+
