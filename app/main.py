@@ -82,9 +82,9 @@ def login(user:UserLogin ,response:Response,request:Request):
         session_id=secrets.token_urlsafe(32)
         created_at=datetime.utcnow()
         expires_at=created_at+timedelta(hours=1)
-        exixting_session=cur.execute("""
+        exixting_sessions=cur.execute("""
         SELECT session_id FROM sessions WHERE user_id=? And expires_at >?
-        """,(result["id"],datetime.utcnow())).fetchone()
+        """,(result["id"],datetime.utcnow())).fetchall()
         cur.execute("""
         INSERT INTO sessions
         (session_id,user_id,created_at,expires_at)
@@ -103,11 +103,13 @@ def login(user:UserLogin ,response:Response,request:Request):
         WHERE username=?""",(user.username,))
         con.commit()
         log_security_event("LOGIN_SUCCESS",result["id"],get_ip_address(request))
-        if exixting_session is None:
+        if not exixting_sessions :
             log_security_event("SESSION_CREATED",result["id"],get_ip_address(request))
         else:
             log_security_event("SESSION_ROTATED",result["id"],get_ip_address(request))
-        
+            for session in exixting_sessions :
+                cur.execute("""DELETE FROM sessions WHERE session_id=?""",(session["session_id"],))
+        con.commit()
         con.close()
         
         return {"message":"login successfully !"}
