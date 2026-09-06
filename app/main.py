@@ -292,6 +292,62 @@ def logout(request:Request,response:Response):
     return{"message":"logged out successfully!"}
 
 
+
+
+
+
+
+
+
+
+#get security events 
+@app.get("/security/events")
+def get_security_events(event_type:str|None = None ,user_id:int|None =None,ip_address:str|None=None,limit:int |None=None,offset:int|None=None,current_user:dict=Depends(require_admin)):
+    con=database.get_db_connection()
+    cur=con.cursor()
+    query="""SELECT id,event_type,user_id,ip_address,timestamp FROM security_events WHERE 1=1"""
+    params=[]
+    if event_type is not None:
+        query+=""" AND event_type=?"""
+        params.append(event_type)
+    if user_id is not None:
+        query+=""" AND user_id=?"""
+        params.append(user_id)
+    if ip_address is not None:
+        query+=""" AND ip_address=?"""
+        params.append(ip_address)
+    query+=""" ORDER BY timestamp DESC"""
+    if limit is not None:
+        query+=""" LIMIT ?"""
+        params.append(limit)
+    if offset is not None:
+        query+=""" OFFSET ?"""
+        params.append(offset)
+    security_events=cur.execute(query,params).fetchall()
+    con.close()
+    if len(security_events)==0:
+        return{"current_user":current_user,
+               "security events":[]}
+    else:
+        return{"current_user":current_user,
+                "security events":[dict(event)for event in security_events]}
+    
+
+
+    
+
+    
+                
+
+
+
+
+
+
+
+
+
+
 #test
 hashed=hashpwd("tahyaljazayer")
 print(hashed)
