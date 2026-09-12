@@ -41,5 +41,16 @@ def init_db():
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id))
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS alerts(
+    id INTEGER PRIMARY KEY,
+    alert_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    user_id INTEGER,
+    ip_address TEXT,
+    description TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id))
+    """)
     con.commit()
     con.close()

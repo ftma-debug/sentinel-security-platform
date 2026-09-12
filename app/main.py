@@ -35,6 +35,24 @@ def log_security_event(event_type,user_id=None,ip_address=None):
 
 
 
+
+
+
+def create_alert(alert_type,severity,user_id=None,ip_address=None,description=""):
+    con=database.get_db_connection()
+    cur=con.cursor()
+    cur.execute("""INSERT INTO alerts 
+    (alert_type,severity,user_id,ip_address,description)
+    VALUES(?,?,?,?,?)""",(alert_type,severity,user_id,ip_address,description))
+    con.commit()
+    con.close()
+
+
+
+
+
+
+
 def get_ip_address(request:Request):
     if request.client:
         return request.client.host
