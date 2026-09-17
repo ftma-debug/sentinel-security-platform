@@ -37,7 +37,7 @@ def log_security_event(event_type,user_id=None,ip_address=None):
 
 
 
-
+#create alert
 def create_alert(alert_type,severity,user_id=None,ip_address=None,description=""):
     con=database.get_db_connection()
     cur=con.cursor()
@@ -85,6 +85,7 @@ def login(user:UserLogin ,response:Response,request:Request):
         if datetime.utcnow() < blocked_until:
             con.close()
             log_security_event("LOGIN_BLOCKED",None,get_ip_address(request))
+            create_alert("LOGIN_BLOCKED","HIGH",None,get_ip_address(request))
             raise HTTPException(
                 status_code=403,
                 detail="Too many failed attempts. Try again later."
@@ -153,6 +154,7 @@ def record_failed_attempts(username,cur):
         blocked_until=datetime.utcnow()+timedelta(minutes=5)
         cur.execute("""UPDATE login_attempts 
                         SET blocked_until=?, failed_attempts=? WHERE username=?""",(blocked_until,failed_attempts,username))
+        create_alert("BRUTE_FORCE","HIGH")
     else:
         cur.execute("""
             UPDATE login_attempts
@@ -170,6 +172,7 @@ def get_current_user(request:Request):
     session_id=request.cookies.get("session_id")
     if session_id is None:
         log_security_event("UNAUTHORIZED_ACCESS",ip_address=get_ip_address(request))
+        create_alert("UNAUTHORIZED_ACCESS","MEDIUM")
         raise HTTPException(status_code=401,detail="Not Authantificated")
     con=database.get_db_connection()
     cur=con.cursor()
@@ -178,10 +181,12 @@ def get_current_user(request:Request):
     if result is None:
         con.close()
         log_security_event("INVALID_SESSION",ip_address=get_ip_address(request))
+        create_alert("INVALID_SESSION","HIGH")
         raise HTTPException(status_code=401,detail="invalid session")
     expires_at=datetime.fromisoformat(result["expires_at"])#Extracts the expiry time from the session data and converts it from a string (ISO format) back into a Python datetime object so you can compare it with the current time.
     if datetime.utcnow()>expires_at:
         log_security_event("SESSION_EXPIRED",result["user_id"],get_ip_address(request))
+        create_alert("SESSION_EXPIRED","MEDIUM")
         con.close()
         raise HTTPException(status_code=401,detail="session expired")
     user=cur.execute("""SELECT id,username,email,role FROM users WHERE id=?""",
@@ -196,6 +201,7 @@ def get_current_user(request:Request):
 def require_admin(request:Request,current_user:dict=Depends(get_current_user)):
     if current_user["role"] !='admin':
         log_security_event("FORBIDDEN_ACCESS",current_user["id"],get_ip_address(request))
+        create_alert("FORBIDDEN_ACCESS","HIGH")
         raise HTTPException(status_code=403,detail="admin access required")
     return current_user
 
@@ -229,6 +235,7 @@ def get_user_with_id(request:Request,user_id: int,current_user:dict=Depends(get_
         current_user["id"],
         get_ip_address(request)
 )
+        create_alert("FORBIDDEN_ACCESS","HIGH")
         raise HTTPException(status_code=403,detail="You are not allowed to access this user")
     con=database.get_db_connection()
     cur=con.cursor()
