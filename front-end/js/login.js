@@ -1,8 +1,9 @@
 const loginform=document.getElementById("login-form");
 const errormsg=document.getElementById("error-message");
 loginform.addEventListener("submit",async(event)=>{
-    const username=document.getElementById("username");
-    const password=document.getElementById("password");
+    event.preventDefault();
+    const username=document.getElementById("username").value;
+    const password=document.getElementById("password").value;
     try{
         const response =await fetch("http://127.0.0.1:8000/auth/login",{
             method:"post",
