@@ -216,6 +216,11 @@ def get_current_user(request:Request):
     return dict(user)
 
 
+@app.get("/auth/me")
+def auth_me(current_user: dict = Depends(get_current_user)):
+    return current_user
+
+
 def require_admin(request:Request,current_user:dict=Depends(get_current_user)):
     if current_user["role"] !='admin':
         log_security_event("FORBIDDEN_ACCESS",current_user["id"],get_ip_address(request))

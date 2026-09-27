@@ -1,0 +1,94 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Sentinel | Dashboard</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <header class="dashboard-header">
+        <div>
+            <h1>Sentinel</h1>
+            <p>Security Dashboard</p>
+        </div>
+
+        <button id="logout-btn">Logout</button>
+    </header>
+
+    <main class="dashboard-container">
+
+        <!-- Current user -->
+        <section class="user-section">
+            <h2>
+                Welcome, <span id="username"></span>
+            </h2>
+
+            <p>
+                Role:
+                <strong id="user-role"></strong>
+            </p>
+        </section>
+
+        <!-- Security statistics -->
+        <section class="stats">
+
+            <div class="stat-card">
+                <h3>Security Events</h3>
+                <p id="events-count">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Alerts</h3>
+                <p id="alerts-count">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Active Sessions</h3>
+                <p id="sessions-count">0</p>
+            </div>
+
+        </section>
+
+        <!-- Recent security events -->
+        <section class="dashboard-section">
+
+            <div class="section-header">
+                <h2>Recent Security Events</h2>
+
+                <a href="events.html">View all</a>
+            </div>
+
+            <div id="recent-events">
+                <p>Loading events...</p>
+            </div>
+
+        </section>
+
+        <!-- Recent alerts -->
+        <section class="dashboard-section">
+
+            <div class="section-header">
+                <h2>Recent Alerts</h2>
+
+                <a href="alerts.html">View all</a>
+            </div>
+
+            <div id="recent-alerts">
+                <p>Loading alerts...</p>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="js/dashboard.js"></script>
+
+</body>
+</html>
+
