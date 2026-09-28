@@ -379,6 +379,43 @@ def get_security_events(event_type:str|None = None ,user_id:int|None =None,ip_ad
     else:
         return{"current_user":current_user,
                 "security events":[dict(event)for event in security_events]}
+
+
+@app.get("/alerts")
+def get_alerts(alert_type:str | None=None,severity:str|None=None,user_id:int |None=None,ip_address:str|None=None,limit:int|None=None,offset:int|None=None,current_user:dict=Depends(require_admin)):
+    con=database.get_db_connection()
+    cur=con.cursor()
+    query="SELECT * FROM alerts WHERE 1=1  "
+    params=[]
+    if alert_type is not None:
+        query+="AND alert_type=? "
+        params.append(alert_type)
+    if severity is not None:
+        query+="AND severity=? "
+        params.append(severity)
+    if user_id is not None:
+        query+="AND user_id=? "
+        params.append(user_id)
+    if ip_address is not None:
+        query+="AND ip_address=? "
+        params.append(ip_address)
+    if limit is not None:
+        query+="LIMIT? "
+        params.append(limit)
+    if offset is not None:
+        query+="OFFSET? "
+        params.append(offset)
+    alerts=cur.execute(query,params).fetchall()
+    con.close()
+    if len(alerts)==0:
+        return{"current_user":current_user,
+                   "alerts":[]}
+    else:
+        return{"current_user":current_user,
+                    "alerts":[dict(event)for event in alerts]}
+
+
+
     
 
 
